@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  background-color: #f8fafc;
+  color: #0f172a;
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+/* Custom glowing scanner box animations */
+@keyframes scan-glow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 35px rgba(16, 185, 129, 0.9);
+  }
+}
+
+.scanner-glow {
+  animation: scan-glow 2s infinite ease-in-out;
+}
+
+@keyframes scan-line {
+  0% {
+    top: 5%;
+  }
+  50% {
+    top: 95%;
+  }
+  100% {
+    top: 5%;
+  }
+}
+
+.scanner-line {
+  position: absolute;
+  left: 5%;
+  width: 90%;
+  height: 3px;
+  background-color: #10b981;
+  box-shadow: 0 0 10px #10b981, 0 0 20px #10b981;
+  animation: scan-line 3.5s infinite linear;
+}

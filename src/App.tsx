@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Book, Transaction } from "./types";
 import ScannerPanel from "./components/ScannerPanel";
+import { defaultBooks } from "./defaultBooks";
 import BookCatalog from "./components/BookCatalog";
 import RightSidebarLogs from "./components/RightSidebarLogs";
 import AdminPanel from "./components/AdminPanel";
@@ -68,11 +69,45 @@ export default function App() {
       const res = await fetch("/api/library");
       if (!res.ok) throw new Error("Kutubxona ma'lumotlarini yuklab bo'lmadi.");
       const data = await res.json();
-      setBooks(data.books || []);
-      setTransactions(data.transactions || []);
+      
+      const serverBooks = data.books || [];
+      const serverTransactions = data.transactions || [];
+      
+      if (serverBooks.length > 0) {
+        setBooks(serverBooks);
+        setTransactions(serverTransactions);
+        localStorage.setItem("najot_books_backup", JSON.stringify(serverBooks));
+        localStorage.setItem("najot_transactions_backup", JSON.stringify(serverTransactions));
+      } else {
+        // If server returns empty array (e.g., cleared/unseeded or dynamic reset in container deployment), check local storage
+        const localBooksStr = localStorage.getItem("najot_books_backup");
+        const localTxsStr = localStorage.getItem("najot_transactions_backup");
+        if (localBooksStr) {
+          const localBooks = JSON.parse(localBooksStr);
+          const localTxs = localTxsStr ? JSON.parse(localTxsStr) : [];
+          setBooks(localBooks);
+          setTransactions(localTxs);
+        } else {
+          // If both local storage and server books are completely empty, set high-fidelity defaultBooks dataset
+          setBooks(defaultBooks);
+          setTransactions([]);
+          localStorage.setItem("najot_books_backup", JSON.stringify(defaultBooks));
+          localStorage.setItem("najot_transactions_backup", JSON.stringify([]));
+        }
+      }
       setErrorMessage(null);
     } catch (err: any) {
       setErrorMessage(err.message || "Ulanishda xatolik yuz berdi.");
+      // On connection error, load fallback data from localStorage or defaultBooks so that the user keeps their screen active
+      const localBooksStr = localStorage.getItem("najot_books_backup");
+      const localTxsStr = localStorage.getItem("najot_transactions_backup");
+      if (localBooksStr) {
+        setBooks(JSON.parse(localBooksStr));
+        setTransactions(localTxsStr ? JSON.parse(localTxsStr) : []);
+      } else {
+        setBooks(defaultBooks);
+        setTransactions([]);
+      }
     } finally {
       setLoading(false);
     }

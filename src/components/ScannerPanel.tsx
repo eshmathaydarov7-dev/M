@@ -91,7 +91,7 @@ export default function ScannerPanel({
     // Pass everything to active transaction creator
     onScanComplete({
       isImage: false,
-      isQuickBorrow: true,
+      isQuickBorrow: mode === "quick_borrow",
       quickBorrowData: {
         barcode: cleanBarcode,
         title: cleanTitle,

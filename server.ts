@@ -129,13 +129,6 @@ app.post("/api/library/sync", (req, res) => {
             addedAt: cb.addedAt || new Date().toISOString()
           });
           updated = true;
-        } else {
-          // Sync book availability if client has newer state
-          const index = data.books.findIndex((b: any) => String(b.barcode) === String(cb.barcode) || String(b.id) === String(cb.barcode));
-          if (index !== -1 && cb.available !== undefined && data.books[index].available !== cb.available) {
-            data.books[index].available = cb.available;
-            updated = true;
-          }
         }
       });
     }
@@ -241,15 +234,22 @@ app.post("/api/library/borrow", (req, res) => {
       return res.status(500).json({ error: "Kutubxona ma'lumotlari yuklanmadi." });
     }
 
-    const bookIndex = data.books.findIndex((b: any) => String(b.id) === String(bookId) || String(b.barcode) === String(bookId));
+    // Find all copies matching the book ID or barcode
+    const matchingIndices = data.books
+      .map((b: any, index: number) => ({ book: b, index }))
+      .filter((item: any) => String(item.book.id) === String(bookId) || String(item.book.barcode) === String(bookId));
 
-    if (bookIndex === -1) {
+    if (matchingIndices.length === 0) {
       return res.status(404).json({ error: "Ushbu shtrix-kod yoki ID bilan kitob kutubxonamizda topilmadi." });
     }
 
+    // Try to find a copy that is actually available
+    const availableItem = matchingIndices.find((item: any) => item.book.available);
+    const bookIndex = availableItem ? availableItem.index : matchingIndices[0].index;
+
     const book = data.books[bookIndex];
     if (!book.available) {
-      return res.status(400).json({ error: `Kechirasiz! "${book.title}" kitobi hozirda band qilingan.` });
+      return res.status(400).json({ error: `Kechirasiz! "${book.title}" kitobidan hozirda bo'sh nusxa qolmagan.` });
     }
 
     // Update book availability
@@ -294,11 +294,18 @@ app.post("/api/library/return", (req, res) => {
       return res.status(500).json({ error: "Kutubxona ma'lumotlari yuklanmadi." });
     }
 
-    const bookIndex = data.books.findIndex((b: any) => String(b.id) === String(bookId) || String(b.barcode) === String(bookId));
+    // Find all copies matching the book ID or barcode
+    const matchingIndices = data.books
+      .map((b: any, index: number) => ({ book: b, index }))
+      .filter((item: any) => String(item.book.id) === String(bookId) || String(item.book.barcode) === String(bookId));
 
-    if (bookIndex === -1) {
+    if (matchingIndices.length === 0) {
       return res.status(404).json({ error: "Kechirasiz, ushbu kitob bazada topilmadi." });
     }
+
+    // Try to find a copy that is currently borrowed (not available)
+    const borrowedItem = matchingIndices.find((item: any) => !item.book.available);
+    const bookIndex = borrowedItem ? borrowedItem.index : matchingIndices[0].index;
 
     const book = data.books[bookIndex];
     if (!Array.isArray(data.transactions)) {

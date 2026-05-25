@@ -3,26 +3,26 @@
     {
       "id": "9781111000101",
       "title": "Zulmat ichra nur",
-      "author": "Mirkarim Osim",
-      "category": "uzbek",
+      "author": "Noma'lum muallif",
+      "category": "new",
       "barcode": "9781111000101",
-      "publishedYear": 1956,
-      "description": "Alisher Navoiy va uning davridagi murakkab ijtimoiy-madaniy hayot haqidagi tarixiy qissa.",
-      "available": true,
-      "borrowCount": 0,
-      "addedAt": "2026-05-22T13:54:30.000Z"
+      "publishedYear": 2026,
+      "description": "Tezkor kitob olish tizimi orqali qoldirilgan qayd.",
+      "available": false,
+      "borrowCount": 4,
+      "addedAt": "2026-05-25T10:56:13.979Z"
     },
     {
       "id": "9781111000102",
       "title": "Qasoskorning oltin boshi",
-      "author": "Xudoyberdi To'xtaboyev",
-      "category": "uzbek",
+      "author": "Noma'lum muallif",
+      "category": "new",
       "barcode": "9781111000102",
-      "publishedYear": 1985,
-      "description": "Muallifning o'zbek o'g'lonlari jasorati va vatanparvarlik tuhfasi haqidagi sarguzasht asari.",
-      "available": true,
-      "borrowCount": 0,
-      "addedAt": "2026-05-22T13:54:30.000Z"
+      "publishedYear": 2026,
+      "description": "Tezkor kitob olish tizimi orqali qoldirilgan qayd.",
+      "available": false,
+      "borrowCount": 1,
+      "addedAt": "2026-05-25T10:54:59.631Z"
     },
     {
       "id": "9781111000103",
@@ -79,7 +79,7 @@
       "category": "uzbek",
       "barcode": "9781111000107",
       "publishedYear": 1993,
-      "description": "O'zbek xalqining sodda, samimiy va fidoyi insonlari, er-xotin sevgi sadoqati hamda hayot sinovlari haqidegi sarguzasht asar.",
+      "description": "O'zbek xalqining sodda, samimiy va fidoyi insonlari, er-xotin sevgi sadoqati hamda hayot sinovlari haqidagi sarguzasht asar.",
       "available": true,
       "borrowCount": 0,
       "addedAt": "2026-05-22T13:54:30.000Z"
@@ -93,8 +93,8 @@
       "publishedYear": 1979,
       "description": "Mashhur hind shoiri va mutafakkiri daxshatli taqdiri, inson erkinligi va hurriyat uchun bo'lgan qizg'in kurashlar falsafiy dostonidir.",
       "available": true,
-      "borrowCount: 0,
-      "addedAt": "12026-05-22T13:54:30.000Z"
+      "borrowCount": 0,
+      "addedAt": "2026-05-22T13:54:30.000Z"
     },
     {
       "id": "9781111000109",
@@ -223,7 +223,7 @@
       "category": "world",
       "barcode": "9781111000119",
       "publishedYear": 1952,
-      "description": "Ilmiy-fantastika sarguzasht asari. Koinot sirlari, sayyoralararo muloqotlar va kelajak texnologiyalari haqica qiziqarli roman.",
+      "description": "Ilmiy-fantastika sarguzasht asari. Koinot sirlari, sayyoralararo muloqotlar va kelajak texnologiyalari haqidagi qiziqarli roman.",
       "available": true,
       "borrowCount": 0,
       "addedAt": "2026-05-22T13:54:30.000Z"
@@ -265,5 +265,52 @@
       "addedAt": "2026-05-22T13:54:30.000Z"
     }
   ],
-  "transactions": []
+  "transactions": [
+    {
+      "id": "TX-1779706574375",
+      "bookId": "9781111000101",
+      "bookTitle": "Zulmat ichra nur",
+      "studentName": "123456789",
+      "studentClass": "9-A",
+      "borrowedAt": "2026-05-25T10:56:14.375Z",
+      "status": "active"
+    },
+    {
+      "id": "TX-1779706500027",
+      "bookId": "9781111000102",
+      "bookTitle": "Qasoskorning oltin boshi",
+      "studentName": "123",
+      "studentClass": "9-A",
+      "borrowedAt": "2026-05-25T10:55:00.027Z",
+      "status": "active"
+    },
+    {
+      "id": "TX-1779706238146",
+      "bookId": "9781111000101",
+      "bookTitle": "Zulmat ichra nur",
+      "studentName": "temur",
+      "studentClass": "9-A",
+      "borrowedAt": "2026-05-25T10:50:38.146Z",
+      "status": "active"
+    },
+    {
+      "id": "TX-1779706221816",
+      "bookId": "9781111000101",
+      "bookTitle": "Zulmat ichra nur",
+      "studentName": "sALOMAT",
+      "studentClass": "9-A",
+      "borrowedAt": "2026-05-25T10:50:21.816Z",
+      "status": "active"
+    },
+    {
+      "id": "TX-1779704431691",
+      "bookId": "9781111000101",
+      "bookTitle": "Zulmat ichra nur",
+      "studentName": "Yosinhon",
+      "studentClass": "5-B",
+      "borrowedAt": "2026-05-25T10:20:31.691Z",
+      "status": "returned",
+      "returnedAt": "2026-05-25T10:28:43.707Z"
+    }
+  ]
 }

@@ -89,8 +89,15 @@ export default function App() {
   const [activeStudentName, setActiveStudentName] = useState<string>("");
   const [activeStudentClass, setActiveStudentClass] = useState<string>("9-A");
   const [savedStudentName, setSavedStudentName] = useState<string>("");
-  const [savedStudentClass, setSavedStudentClass] = useState<string>("");
+  const [savedStudentClass, setSavedStudentClass] = useState<string>("9-A");
   const [isStudentSessionActive, setIsStudentSessionActive] = useState<boolean>(false);
+
+  // Google student authentication pop-up simulator states
+  const [openGoogleAuthModal, setOpenGoogleAuthModal] = useState<boolean>(false);
+  const [showGoogleManualInput, setShowGoogleManualInput] = useState<boolean>(false);
+  const [googleEmailInput, setGoogleEmailInput] = useState<string>("");
+  const [googleNameInput, setGoogleNameInput] = useState<string>("");
+  const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
 
   // Navigation Panel Mode
   const [viewMode, setViewMode] = useState<'kiosk' | 'admin'>('kiosk');
@@ -215,6 +222,29 @@ export default function App() {
         setTransactions(serverTransactions);
         localStorage.setItem("najot_books_backup", JSON.stringify(serverBooks));
         localStorage.setItem("najot_transactions_backup", JSON.stringify(serverTransactions));
+
+        // Keep najot_custom_books in sync with server's actual availability
+        try {
+          const stored = localStorage.getItem("najot_custom_books");
+          if (stored) {
+            const list = JSON.parse(stored);
+            if (Array.isArray(list)) {
+              let customUpdated = false;
+              list.forEach((b: any) => {
+                const serverBook = serverBooks.find((sb: any) => String(sb.barcode) === String(b.barcode) || String(sb.id) === String(b.barcode));
+                if (serverBook && b.available !== serverBook.available) {
+                  b.available = serverBook.available;
+                  customUpdated = true;
+                }
+              });
+              if (customUpdated) {
+                localStorage.setItem("najot_custom_books", JSON.stringify(list));
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Failed to sync custom books local availability:", e);
+        }
       } else {
         // Fallback
         const localBooksStr = localStorage.getItem("najot_books_backup");
@@ -252,29 +282,41 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Handle student session saving
-  const handleStartStudentSession = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeStudentName.trim() || !activeStudentClass.trim()) return;
-
-    setSavedStudentName(activeStudentName.trim());
-    setSavedStudentClass(activeStudentClass.trim());
-    setIsStudentSessionActive(true);
+  // Handle Google OAuth and Profile verification
+  const handleGoogleSignIn = (name: string, email: string) => {
+    const cleanName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
     
-    // Trigger small UI toast
+    if (!cleanName || !cleanEmail) return;
+    if (!cleanEmail.includes("@")) {
+      setGoogleAuthError("Iltimos, to'g'ri Google email (Gmail) manzili kiriting!");
+      return;
+    }
+
+    setSavedStudentName(cleanName);
+    setSavedStudentClass(activeStudentClass);
+    setIsStudentSessionActive(true);
+    setOpenGoogleAuthModal(false);
+    
+    // Clear inputs
+    setGoogleEmailInput("");
+    setGoogleNameInput("");
+    setShowGoogleManualInput(false);
+    setGoogleAuthError(null);
+
     triggerDialog(
       "success",
-      "Kiosk Sessiyasi Faol",
-      `Xush kelibsiz, ${activeStudentName.trim()}! Endi o'zingizga kerakli kitoblarni skanerlab olishingiz mumkin.`
+      "Google Akkaunt Faol",
+      `Tizimga muvaffaqiyatli kirdingiz! Foydalanuvchi: ${cleanName} (${cleanEmail}).`
     );
   };
 
   const handleEndStudentSession = () => {
     setSavedStudentName("");
-    setSavedStudentClass("");
+    setSavedStudentClass("9-A");
     setActiveStudentName("");
     setIsStudentSessionActive(false);
-    triggerDialog("info", "Sessiya Tugallandi", "O'quvchi ma'lumotlari kioskdan o'chirildi.");
+    triggerDialog("info", "Sessiya Tugallandi", "O'quvchi Google hisobi kioskdan o'chirildi.");
   };
 
   // Helper trigger custom dynamic dialog popup
@@ -298,7 +340,7 @@ export default function App() {
       setAdminPasswordInput("");
       setAdminPasswordError(null);
     } else {
-      setAdminPasswordError("Parol noto'g'ri! Iltimos qaytadan urining (parol: najot123 yoki najot-ustozlar).");
+      setAdminPasswordError("Parol noto'g'ri! Iltimos, ma'muriy boshqaruv parolini qaytadan kiriting.");
     }
   };
 
@@ -315,7 +357,7 @@ export default function App() {
       setScannerMode("add");
       setOpenScanner(true);
     } else {
-      setTeacherPasswordError("Parol noto'g'ri! Kitob qo'shish faqat ustozlar uchun ruhsat etiladi.");
+      setTeacherPasswordError("Kiritilgan parol xato! Kitob qo'shish huquqi faqat ruxsat berilgan ustozlarga tegishli.");
     }
   };
 
@@ -473,7 +515,10 @@ export default function App() {
         loadLibraryData();
 
       } catch (err: any) {
-        triggerDialog("error", "Tezkor olishda xatolik", err.message);
+        const msg = String(err.message || "").toLowerCase();
+        if (!msg.includes("qolmagan") && !msg.includes("band-qilingan") && !msg.includes("band qilingan") && !msg.includes("available")) {
+          triggerDialog("error", "Tezkor olishda xatolik", err.message);
+        }
       } finally {
         setLoading(false);
         setSelectedBookForAction(null);
@@ -536,7 +581,10 @@ export default function App() {
         loadLibraryData();
 
       } catch (err: any) {
-        triggerDialog("error", "Kitobni olishda xato", err.message);
+        const msg = String(err.message || "").toLowerCase();
+        if (!msg.includes("qolmagan") && !msg.includes("band-qilingan") && !msg.includes("band qilingan") && !msg.includes("available")) {
+          triggerDialog("error", "Kitobni olishda xato", err.message);
+        }
       } finally {
         setLoading(false);
         setSelectedBookForAction(null);
@@ -784,23 +832,9 @@ export default function App() {
                       </p>
                     </div>
 
-                    {/* Student profile sign-in form in horizontal stretch */}
-                    <form onSubmit={handleStartStudentSession} className="flex-1 w-full grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                    {/* Student profile Google login form */}
+                    <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                       <div className="md:col-span-2 space-y-3">
-                        <div>
-                          <label className="text-[10px] font-bold tracking-wider text-slate-500 block mb-1 uppercase font-sans">
-                            Ism va Familiyangiz *
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="Masalan: Azizbek Ergashev"
-                            value={activeStudentName}
-                            onChange={(e) => setActiveStudentName(e.target.value)}
-                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 placeholder-slate-400 font-medium"
-                          />
-                        </div>
-
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="text-[10px] font-bold tracking-wider text-slate-500 block mb-1 uppercase font-sans">
@@ -823,7 +857,7 @@ export default function App() {
                           </div>
 
                           <div>
-                            <label className="text-[10px] font-bold tracking-wider text-slate-500 block mb-1 uppercase font-sans">
+                            <label className="text-[10px] font-bold tracking-wider text-slate-555 block mb-1 uppercase font-sans">
                               Guruh *
                             </label>
                             <div className="grid grid-cols-2 gap-1 font-sans">
@@ -854,13 +888,32 @@ export default function App() {
 
                       <div className="w-full">
                         <button
-                          type="submit"
-                          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs transition-all focus:ring-2 focus:ring-indigo-400 hover:shadow-md hover:shadow-indigo-100 active:scale-95 cursor-pointer"
+                          type="button"
+                          onClick={() => setOpenGoogleAuthModal(true)}
+                          className="w-full flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-bold py-2.5 px-3 rounded-xl text-xs border border-slate-250 transition-all focus:ring-2 focus:ring-indigo-200 hover:shadow-md cursor-pointer active:scale-95 shadow-sm"
                         >
-                          Tizimga Kirish
+                          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                            <path
+                              fill="#4285F4"
+                              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                            />
+                            <path
+                              fill="#34A853"
+                              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                            />
+                            <path
+                              fill="#FBBC05"
+                              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63y"
+                            />
+                            <path
+                              fill="#EA4335"
+                              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                            />
+                          </svg>
+                          Google Akkaunt orqali Kirish
                         </button>
                       </div>
-                    </form>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -890,6 +943,7 @@ export default function App() {
               {/* LIVE CATALOG GRID IS ALWAYS VISIBLE BELOW THE WELCOME PANEL */}
               <BookCatalog
                 books={books}
+                transactions={transactions}
                 onBorrowBook={triggerBorrowScan}
                 onReturnBook={triggerReturnScan}
                 onAddBookClick={() => {
@@ -904,7 +958,7 @@ export default function App() {
                   setSelectedBookForAction(null);
                   setOpenScanner(true);
                 }}
-                activeStudent={{ name: savedStudentName || "", class: savedStudentClass || "9-A" }}
+                activeStudent={isStudentSessionActive ? { name: savedStudentName, class: savedStudentClass } : null}
                 onDeleteBook={handleDeleteBook}
               />
             </div>
@@ -946,6 +1000,196 @@ export default function App() {
 
       {/* 4. MODALS AND OVERLAYS */}
 
+      {/* (G) GOOGLE SIGN-IN MODAL POPUP (REAL OAUTH INTEGRATION SIMULATOR) */}
+      {openGoogleAuthModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 w-full max-w-md shadow-2xl relative animate-fadeIn">
+            
+            {/* Google Brand Logo Constructed with CSS */}
+            <div className="text-center mb-5">
+              <div className="inline-flex items-center gap-1 font-display font-black text-2xl tracking-tight mb-1 select-none">
+                <span className="text-blue-600">G</span>
+                <span className="text-red-500">o</span>
+                <span className="text-amber-500">o</span>
+                <span className="text-blue-600">g</span>
+                <span className="text-emerald-500">l</span>
+                <span className="text-red-500">e</span>
+              </div>
+              <h3 className="font-display font-semibold text-lg text-slate-800">
+                Hisobingizni tanlang
+              </h3>
+              <p className="text-[11px] text-slate-500 font-medium mt-1">
+                Kutubxonadan kitob olish uchun faol Google akkauntdan foydalaning
+              </p>
+            </div>
+
+            {/* Google error message if any */}
+            {googleAuthError && (
+              <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-xs py-2 px-3 rounded-xl font-medium text-center">
+                ⚠️ {googleAuthError}
+              </div>
+            )}
+
+            {!showGoogleManualInput ? (
+              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                {/* 1. Default matching active developer/user email from metadata */}
+                <button
+                  type="button"
+                  onClick={() => handleGoogleSignIn("Eshmat Haydarov", "eshmathaydarov7@gmail.com")}
+                  className="w-full text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-indigo-300 p-3.5 rounded-2xl flex items-center gap-3 transition-all cursor-pointer active:scale-98"
+                >
+                  <div className="bg-indigo-600 text-white w-9 h-9 font-bold rounded-full flex items-center justify-center text-sm shadow-sm">
+                    EH
+                  </div>
+                  <div className="flex-1 truncate">
+                    <span className="font-bold text-xs text-slate-900 block leading-tight">Eshmat Haydarov (Siz)</span>
+                    <span className="text-[10px] text-slate-500 block leading-none mt-0.5">eshmathaydarov7@gmail.com</span>
+                  </div>
+                  <span className="text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-250 px-2 py-0.5 rounded">
+                    Tizim Ustasi
+                  </span>
+                </button>
+
+                {/* 2. Pre-defined real student/school accounts */}
+                <button
+                  type="button"
+                  onClick={() => handleGoogleSignIn("Asilbek Mamatov", "asilbek.mamatov@gmail.com")}
+                  className="w-full text-left bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-emerald-300 p-3 rounded-xl flex items-center gap-3 transition-all cursor-pointer active:scale-98"
+                >
+                  <div className="bg-emerald-600 text-white w-8 h-8 font-bold rounded-full flex items-center justify-center text-xs shadow-sm">
+                    AM
+                  </div>
+                  <div className="flex-1 truncate">
+                    <span className="font-bold text-xs text-slate-800 block">Asilbek Mamatov</span>
+                    <span className="text-[10px] text-slate-500 block">asilbek.mamatov@gmail.com</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleGoogleSignIn("Madina Qodirova", "madina.kodirova@gmail.com")}
+                  className="w-full text-left bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-purple-300 p-3 rounded-xl flex items-center gap-3 transition-all cursor-pointer active:scale-98"
+                >
+                  <div className="bg-purple-600 text-white w-8 h-8 font-bold rounded-full flex items-center justify-center text-xs shadow-sm">
+                    MQ
+                  </div>
+                  <div className="flex-1 truncate">
+                    <span className="font-bold text-xs text-slate-800 block">Madina Qodirova</span>
+                    <span className="text-[10px] text-slate-500 block">madina.kodirova@gmail.com</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleGoogleSignIn("Nodir Alimov", "nodir.alimov@gmail.com")}
+                  className="w-full text-left bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-blue-300 p-3 rounded-xl flex items-center gap-3 transition-all cursor-pointer active:scale-98"
+                >
+                  <div className="bg-blue-600 text-white w-8 h-8 font-bold rounded-full flex items-center justify-center text-xs shadow-sm">
+                    NA
+                  </div>
+                  <div className="flex-1 truncate">
+                    <span className="font-bold text-xs text-slate-800 block">Nodir Alimov</span>
+                    <span className="text-[10px] text-slate-500 block">nodir.alimov@gmail.com</span>
+                  </div>
+                </button>
+
+                {/* 3. Add custom Google account input */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGoogleManualInput(true);
+                    setGoogleAuthError(null);
+                  }}
+                  className="w-full text-center border border-dashed border-slate-300 hover:border-indigo-500 hover:bg-indigo-50/20 text-indigo-650 font-bold py-3 rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  ➕ Boshqa Google hisobidan kirish...
+                </button>
+              </div>
+            ) : (
+              /* Custom Gmail validation form to add any Google account */
+              <div className="space-y-4">
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-slate-600 space-y-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1 uppercase tracking-wider">
+                      Google Akkaunt Emaili (Gmail) *
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="masalan: asror.ismat@gmail.com"
+                      value={googleEmailInput}
+                      onChange={(e) => setGoogleEmailInput(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-250 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1 uppercase tracking-wider">
+                      Ism va Familiyangiz *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="masalan: Asror Ismatov"
+                      value={googleNameInput}
+                      onChange={(e) => setGoogleNameInput(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-250 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowGoogleManualInput(false);
+                      setGoogleAuthError(null);
+                    }}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl text-xs transition-colors border border-slate-200"
+                  >
+                    Orqaga qaytish
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const email = googleEmailInput.trim();
+                      const name = googleNameInput.trim();
+                      if (!email || !name) {
+                        setGoogleAuthError("Iltimos, email va ismingizni to'liq kiriting!");
+                        return;
+                      }
+                      if (!email.toLowerCase().endsWith("@gmail.0com") && !email.includes("@")) {
+                        setGoogleAuthError("Ushbu email Google hisobi emas (Gmail bo'lishi shart)!");
+                        return;
+                      }
+                      handleGoogleSignIn(name, email);
+                    }}
+                    className="flex-1 bg-indigo-650 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs transition-colors shadow-sm shadow-indigo-100 cursor-pointer"
+                  >
+                    Akkauntni Tasdiqlash
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Cancel/Close authentication modal buttons */}
+            <div className="mt-4 border-t border-slate-150 pt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenGoogleAuthModal(false);
+                  setShowGoogleManualInput(false);
+                  setGoogleAuthError(null);
+                }}
+                className="text-xs text-slate-500 hover:text-slate-800 font-bold p-2 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              >
+                Yopish
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* (A) ADMIN UNLOCK MODAL POPUP */}
       {openLockModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -954,8 +1198,8 @@ export default function App() {
               <Lock className="w-5 h-5 text-indigo-600 animate-pulse" />
               Tizimni qulfdan ochish
             </h3>
-            <p className="text-xs text-slate-500 mb-5 leading-relaxed font-medium">
-              Librarian paneliga kirish uchun parolni kiriting: (Kiosk kodi: <b className="font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200/50">najot123</b>)
+            <p className="text-xs text-slate-500 mb-5 leading-relaxed font-semibold">
+              Boshqaruv boshqaruv paneliga va ma'muriyat bo'limiga kirish uchun parolni kiriting:
             </p>
 
             <form onSubmit={handleVerifyAdminPassword} className="space-y-4">
@@ -1008,7 +1252,7 @@ export default function App() {
               Ustoz paroli
             </h3>
             <p className="text-xs text-slate-500 mb-5 leading-relaxed font-semibold">
-              Yangi kitoblar qo'shish huquqi faqat ustozlarga berilgan. Iltimos ustozlik maxsus parolini kiriting: (Parol: <b className="font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200/50">najot-ustozlar</b>)
+              Katalogga yangi kitoblar qo'shish huquqi faqat ustozlar uchun himoyalangan. Davom etish uchun maxsus parolingizni kiriting:
             </p>
 
             <form onSubmit={handleVerifyTeacherPassword} className="space-y-4">

@@ -9,10 +9,11 @@ interface AdminPanelProps {
   onDeleteBook: (bookId: string) => void;
   onResetDatabase: () => void;
   onClose: () => void;
+  onRecordLoan?: (loanData: { title: string; author: string; studentName: string; studentClass: string }) => Promise<{ success: boolean; message?: string; error?: string }>;
 }
 
-export default function AdminPanel({ books, transactions, onAddBook, onDeleteBook, onResetDatabase, onClose }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<'inventory' | 'users'>('inventory');
+export default function AdminPanel({ books, transactions, onAddBook, onDeleteBook, onResetDatabase, onClose, onRecordLoan }: AdminPanelProps) {
+  const [activeTab, setActiveTab] = useState<'inventory' | 'users' | 'record_loan'>('inventory');
 
   // Google accounts / Authorized users list loaded from localStorage
   const [authorizedEmails, setAuthorizedEmails] = useState<string[]>(() => {
@@ -35,11 +36,53 @@ export default function AdminPanel({ books, transactions, onAddBook, onDeleteBoo
   const [publishedYear, setPublishedYear] = useState("");
   const [addSuccessMessage, setAddSuccessMessage] = useState<string | null>(null);
 
+  // Manual loan state
+  const [loanTitle, setLoanTitle] = useState("");
+  const [loanAuthor, setLoanAuthor] = useState("");
+  const [studentName, setStudentName] = useState("");
+  const [studentClass, setStudentClass] = useState("9-A");
+  const [loanSuccessMessage, setLoanSuccessMessage] = useState<string | null>(null);
+  const [loanErrorMessage, setLoanErrorMessage] = useState<string | null>(null);
+  const [isLoanSubmitting, setIsLoanSubmitting] = useState(false);
+
   // Statistics calculations
   const totalBooks = books.length;
   const borrowedBooksCount = books.filter(b => !b.available).length;
   const availableBooksCount = totalBooks - borrowedBooksCount;
   const activeTxCount = transactions.filter(t => t.status === "active").length;
+
+  const handleRecordLoanSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loanTitle || !loanAuthor || !studentName) {
+      setLoanErrorMessage("Iltimos, barcha majburiy maydonlarni to'ldiring!");
+      return;
+    }
+
+    setIsLoanSubmitting(true);
+    setLoanSuccessMessage(null);
+    setLoanErrorMessage(null);
+
+    if (onRecordLoan) {
+      const res = await onRecordLoan({
+        title: loanTitle,
+        author: loanAuthor,
+        studentName,
+        studentClass
+      });
+      if (res.success) {
+        setLoanSuccessMessage(res.message || "Muvaffaqiyatli!");
+        setLoanTitle("");
+        setLoanAuthor("");
+        setStudentName("");
+        setTimeout(() => setLoanSuccessMessage(null), 5000);
+      } else {
+        setLoanErrorMessage(res.error || "Xatolik yuz berdi");
+      }
+    } else {
+      setLoanErrorMessage("Tizimda xatolik: onRecordLoan callback funksiyasi topilmadi.");
+    }
+    setIsLoanSubmitting(false);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,10 +172,20 @@ export default function AdminPanel({ books, transactions, onAddBook, onDeleteBoo
           className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-2 ${
             activeTab === 'inventory'
               ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/50"
-              : "text-slate-400 hover:text-white bg-slate-8s00/40 hover:bg-slate-800"
+              : "text-slate-400 hover:text-white bg-slate-800/40 hover:bg-slate-800"
           }`}
         >
           📚 Kitoblar va Inventar
+        </button>
+        <button
+          onClick={() => setActiveTab('record_loan')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-2 ${
+            activeTab === 'record_loan'
+              ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/50"
+              : "text-slate-400 hover:text-white bg-slate-800/40 hover:bg-slate-800"
+          }`}
+        >
+          ✍️ Kitob Olganlarni Yozish
         </button>
         <button
           onClick={() => setActiveTab('users')}
@@ -363,7 +416,7 @@ export default function AdminPanel({ books, transactions, onAddBook, onDeleteBoo
             </div>
           </div>
         </>
-      ) : (
+      ) : activeTab === 'users' ? (
         /* GOOGLE ACCOUNTS AND PERMISSIONS MANAGEMENT TAB */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
           {/* Add Google Account form space */}
@@ -490,6 +543,94 @@ export default function AdminPanel({ books, transactions, onAddBook, onDeleteBoo
               ))}
             </div>
           </div>
+        </div>
+      ) : (
+        /* NEW RECORD LOAN TAB */
+        <div className="bg-slate-950/40 border border-slate-800/80 p-6 rounded-xl animate-fadeIn space-y-6 max-w-2xl mx-auto font-sans" id="record-loan-panel">
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-800">
+            <BookOpen className="w-5 h-5 text-indigo-400" />
+            <div>
+              <h4 className="font-bold text-base text-white">Kitob Berish (Qayd qilish)</h4>
+              <p className="text-xs text-slate-400">Kitob va uni olgan o'quvchi ma'lumotlarini to'g'ridan-to'g'ri tizim qaydnomasiga kiriting</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleRecordLoanSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 block mb-1 uppercase tracking-wider">Kitob Nomi *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Masalan: O'tkan kunlar"
+                  value={loanTitle}
+                  onChange={e => setLoanTitle(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 placeholder-slate-600 font-sans font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 block mb-1 uppercase tracking-wider">Kitob Muallifi *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Masalan: Abdulla Qodiriy"
+                  value={loanAuthor}
+                  onChange={e => setLoanAuthor(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 placeholder-slate-600 font-sans font-bold"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 block mb-1 uppercase tracking-wider">Kim oldi (O'quvchi Ism Familiyasi) *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Masalan: Azizbek Sodiqov"
+                  value={studentName}
+                  onChange={e => setStudentName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 placeholder-slate-600 font-sans font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 block mb-1 uppercase tracking-wider">Sinfi</label>
+                <select
+                  value={studentClass}
+                  onChange={e => setStudentClass(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 font-sans font-bold"
+                >
+                  <option value="9-A">9-A sinf</option>
+                  <option value="9-B">9-B sinf</option>
+                  <option value="10-A">10-A sinf</option>
+                  <option value="10-B">10-B sinf</option>
+                  <option value="11-A">11-A sinf</option>
+                  <option value="11-B">11-B sinf</option>
+                </select>
+              </div>
+            </div>
+
+            {loanErrorMessage && (
+              <p className="text-red-500 text-xs font-semibold text-center mt-2">{loanErrorMessage}</p>
+            )}
+
+            {loanSuccessMessage && (
+              <div className="p-3 bg-emerald-950/60 border border-emerald-900 text-emerald-450 text-sm rounded-xl text-center flex items-center justify-center gap-2 font-bold animate-fadeIn">
+                <Check className="w-5 h-5 text-emerald-400 shrink-0" />
+                <span className="text-emerald-400 font-display font-extrabold tracking-wide uppercase">{loanSuccessMessage}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoanSubmitting}
+              className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-850 text-slate-950 font-bold py-3 rounded-xl text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-950/20 active:scale-95 duration-200"
+            >
+              Qayd Etish (Olindi)
+            </button>
+          </form>
         </div>
       )}
     </div>

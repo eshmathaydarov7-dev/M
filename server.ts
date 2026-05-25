@@ -336,6 +336,83 @@ app.post("/api/library/return", (req, res) => {
   }
 });
 
+// 4.5. Admin manual record loan (Admin registers who took which book directly)
+app.post("/api/library/admin-record-loan", (req, res) => {
+  try {
+    const { title, author, studentName, studentClass } = req.body;
+    if (!title || !author || !studentName) {
+      return res.status(400).json({ error: "Kitob nomi, muallifi va o'quvchi ismi kiritilishi shart." });
+    }
+
+    const data = getLibraryData();
+    if (!data || !Array.isArray(data.books)) {
+      return res.status(500).json({ error: "Kutubxona ma'lumotlari yuklanmadi." });
+    }
+
+    const cleanTitle = title.trim();
+    const cleanAuthor = author.trim();
+    const lowerTitle = cleanTitle.toLowerCase();
+    const lowerAuthor = cleanAuthor.toLowerCase();
+
+    // Check if book exists
+    let book = data.books.find((b: any) => 
+      b.title.trim().toLowerCase() === lowerTitle && 
+      b.author.trim().toLowerCase() === lowerAuthor
+    );
+
+    if (!book) {
+      // Create new book on-the-fly with a random barcode
+      const barcodeSuffix = Math.floor(Math.random() * 9000000000 + 1000000000);
+      const barcode = `978${barcodeSuffix}`;
+      
+      book = {
+        id: String(barcode),
+        title: cleanTitle,
+        author: cleanAuthor,
+        category: "new",
+        barcode: String(barcode),
+        publishedYear: new Date().getFullYear(),
+        description: "Ma'muriyat tomonidan qayd qilingan va to'g'ridan-to'g'ri berilgan kitob.",
+        available: true,
+        borrowCount: 0,
+        addedAt: new Date().toISOString()
+      };
+      data.books.unshift(book);
+    }
+
+    // Set book status to borrowed
+    book.available = false;
+    book.borrowCount = (book.borrowCount || 0) + 1;
+
+    // Create an active loan transaction
+    const newTx = {
+      id: `TX-${Date.now()}`,
+      bookId: book.id,
+      bookTitle: book.title,
+      studentName: studentName.trim(),
+      studentClass: studentClass ? studentClass.trim() : "9-A",
+      borrowedAt: new Date().toISOString(),
+      status: "active" as const
+    };
+
+    if (!Array.isArray(data.transactions)) {
+      data.transactions = [];
+    }
+    data.transactions.unshift(newTx);
+    saveLibraryData(data);
+
+    return res.json({ 
+      success: true, 
+      message: "Muvaffaqiyatli!", 
+      transaction: newTx, 
+      book 
+    });
+  } catch (err: any) {
+    console.error("Admin record loan error:", err);
+    return res.status(500).json({ error: "Kitob berishda ichki xatolik yuz berdi: " + err.message });
+  }
+});
+
 // 5. Delete/clear records (Admin controls)
 app.post("/api/library/reset", (req, res) => {
   try {

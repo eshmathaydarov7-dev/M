@@ -734,6 +734,45 @@ export default function App() {
     }
   };
 
+  // Administration record manual book borrow loan
+  const handleRecordLoan = async (loanData: { title: string; author: string; studentName: string; studentClass: string }) => {
+    setLoading(true);
+    try {
+      const result = await safeFetchJson("/api/library/admin-record-loan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(loanData)
+      });
+      
+      if (result.success && result.transaction && result.book) {
+        // Safe check and preserve locally so it is robust
+        registerCustomBook(result.book);
+        
+        // Also add to custom local transactions backup
+        try {
+          const storedTxs = localStorage.getItem("najot_custom_transactions");
+          let currentTxs = storedTxs ? JSON.parse(storedTxs) : [];
+          currentTxs.unshift(result.transaction);
+          localStorage.setItem("najot_custom_transactions", JSON.stringify(currentTxs));
+        } catch (e) {}
+
+        triggerDialog(
+          "success",
+          "Muvaffaqiyatli!",
+          `"${loanData.title}" kitobini topshirish muvaffaqiyatli qayd qilindi!`
+        );
+        loadLibraryData();
+        return { success: true, message: "Muvaffaqiyatli!" };
+      }
+      return { success: false, error: "Noma'lum xatolik yuz berdi." };
+    } catch (err: any) {
+      triggerDialog("error", "Kitob berishda xatolik yuz berdi", err.message);
+      return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Administration backend reset
   const handleResetEntireDatabase = async () => {
     try {
@@ -840,6 +879,7 @@ export default function App() {
               onDeleteBook={handleDeleteBook}
               onResetDatabase={handleResetEntireDatabase}
               onClose={() => setViewMode('kiosk')}
+              onRecordLoan={handleRecordLoan}
             />
           </div>
         ) : (

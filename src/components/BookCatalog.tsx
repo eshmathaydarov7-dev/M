@@ -128,19 +128,10 @@ export default function BookCatalog({ books, transactions, onBorrowBook, onRetur
 
         {/* Floating actions for student / admin */}
         <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-          {onQuickBorrowClick && (
-            <button
-              onClick={onQuickBorrowClick}
-              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition-transform active:scale-95 cursor-pointer shadow-md shadow-emerald-105 w-full md:w-auto justify-center"
-            >
-              <BookOpen className="w-4 h-4 text-white" />
-              Tezkor Kitob Olish
-            </button>
-          )}
           {onQuickReturnClick && (
             <button
               onClick={onQuickReturnClick}
-              className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition-transform active:scale-95 cursor-pointer shadow-md shadow-amber-105 w-full md:w-auto justify-center"
+              className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition-transform active:scale-95 cursor-pointer shadow-md shadow-amber-100 w-full md:w-auto justify-center"
             >
               <RotateCcw className="w-4 h-4 text-white" />
               Tezkor Kitob Qaytarish
@@ -335,24 +326,23 @@ export default function BookCatalog({ books, transactions, onBorrowBook, onRetur
                   <div className="flex gap-2">
                     <div className="flex-1">
                       {book.available ? (
-                        <button
-                          onClick={() => onBorrowBook(book)}
-                          className={`w-full text-xs font-bold py-2.5 rounded-xl text-center transition-all border ${
-                            activeStudent 
-                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 cursor-pointer hover:shadow-md hover:shadow-emerald-100 active:scale-95 px-2' 
-                              : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed px-2'
-                          }`}
-                          title={activeStudent ? 'Skanerlab kitobni olish' : 'Iltimos, avval Google orqali kiring'}
-                        >
-                          {activeStudent ? "Olish (Shtrix-kod)" : "Avval ro'yxatdan o'ting"}
-                        </button>
+                        <div className="w-full text-xs font-bold py-2.5 bg-emerald-50 text-emerald-800 border border-emerald-250 rounded-xl text-center font-sans">
+                          Javonda bor (Mavjud)
+                        </div>
                       ) : (
-                        <button
-                          onClick={() => onReturnBook(book)}
-                          className="w-full text-xs font-bold bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 py-2.5 rounded-xl text-center transition-all cursor-pointer active:scale-95 px-2"
-                        >
-                          Topshirish (Qaytarish)
-                        </button>
+                        <div className="flex flex-col gap-1.5">
+                          <div className="w-full text-xs font-bold py-2.5 bg-rose-50 text-rose-800 border border-rose-250 rounded-xl text-center font-sans">
+                            Kutubxonadan olindi (Oldi)
+                          </div>
+                          {onReturnBook && (
+                            <button
+                              onClick={() => onReturnBook(book)}
+                              className="w-full text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-705 py-1.5 rounded-lg text-center transition-all cursor-pointer inline-flex items-center justify-center gap-1 border border-slate-200"
+                            >
+                              Topshirish / Qaytarish
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                     {onDeleteBook && (

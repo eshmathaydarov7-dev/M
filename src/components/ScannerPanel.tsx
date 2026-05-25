@@ -279,6 +279,66 @@ export default function ScannerPanel({
             </button>
           </div>
         </form>
+      ) : (mode === "borrow" && selectedBook) ? (
+        /* =================== BEAUTIFUL CONFIRMED LOAN FLOW =================== */
+        <div className="space-y-5 mb-6 font-sans animate-fadeIn">
+          <div className="bg-emerald-50 border border-emerald-150 p-4 rounded-xl text-xs text-emerald-950 font-medium leading-relaxed flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+            Tizim sizning so'rovingizni qabul qilishga tayyor. Iltimos, kitob va o'quvchi ma'lumotlarini tekshirib tasdiqlang!
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Book Card Detail Box */}
+            <div className="border border-slate-200 bg-slate-50 p-4 rounded-xl flex flex-col justify-between shadow-sm">
+              <div>
+                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider block mb-1">Tanlangan kitob</span>
+                <span className="text-xs font-bold leading-snug text-slate-800 line-clamp-2 block">{selectedBook.title}</span>
+                <p className="text-[11px] text-slate-500 mt-1">Muallif: {selectedBook.author}</p>
+                <p className="text-[10px] text-slate-400 mt-2 font-mono">Shtrix-kod: {selectedBook.barcode}</p>
+              </div>
+            </div>
+
+            {/* Borrower Card Detail Box */}
+            <div className="border border-slate-200 bg-indigo-50/50 p-4 rounded-xl flex flex-col justify-between shadow-sm">
+              <div>
+                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block mb-1 font-sans">Oluvchi o'quvchi</span>
+                <span className="text-xs font-bold leading-snug text-slate-900 block font-sans">👤 {studentName}</span>
+                <p className="text-[11px] text-slate-650 mt-1 font-sans font-bold">Sinf: {studentClass}</p>
+                <p className="text-[10px] text-slate-400 mt-2">Faol Google Sessiyasi orqali</p>
+              </div>
+            </div>
+          </div>
+
+          {error && <p className="text-red-500 text-xs font-semibold text-center mt-2">{error}</p>}
+
+          <div className="flex gap-2 justify-end pt-4 border-t border-slate-100 mt-4">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all cursor-pointer bg-white"
+            >
+              Bekor qilish
+            </button>
+            <button
+              onClick={() => {
+                onScanComplete({
+                  isImage: false,
+                  isQuickBorrow: false,
+                  quickBorrowData: {
+                    barcode: selectedBook.barcode,
+                    title: selectedBook.title,
+                    studentName,
+                    studentClass
+                  }
+                });
+              }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition-transform active:scale-95 flex items-center gap-1.5 shadow-md shadow-emerald-100 cursor-pointer animate-fadeIn"
+            >
+              Kitobni Olishni Tasdiqlash
+              <ArrowRight className="w-4 h-4 text-white" />
+            </button>
+          </div>
+        </div>
       ) : isBorrowLayout ? (
         /* =================== REQUESTED WIZARD BORROW FORM =================== */
         <form onSubmit={handleQuickBorrowSubmit} className="space-y-4 mb-6 font-sans">

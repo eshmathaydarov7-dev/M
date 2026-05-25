@@ -88,9 +88,27 @@ export default function App() {
   // Active Student State (Kiosk Session)
   const [activeStudentName, setActiveStudentName] = useState<string>("");
   const [activeStudentClass, setActiveStudentClass] = useState<string>("9-A");
-  const [savedStudentName, setSavedStudentName] = useState<string>("");
-  const [savedStudentClass, setSavedStudentClass] = useState<string>("9-A");
-  const [isStudentSessionActive, setIsStudentSessionActive] = useState<boolean>(false);
+  const [savedStudentName, setSavedStudentName] = useState<string>(() => {
+    try {
+      return localStorage.getItem("najot_saved_student_name") || "";
+    } catch (e) {
+      return "";
+    }
+  });
+  const [savedStudentClass, setSavedStudentClass] = useState<string>(() => {
+    try {
+      return localStorage.getItem("najot_saved_student_class") || "9-A";
+    } catch (e) {
+      return "9-A";
+    }
+  });
+  const [isStudentSessionActive, setIsStudentSessionActive] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("najot_saved_student_active") === "true";
+    } catch (e) {
+      return false;
+    }
+  });
 
   // Google student authentication pop-up simulator states
   const [openGoogleAuthModal, setOpenGoogleAuthModal] = useState<boolean>(false);
@@ -297,6 +315,12 @@ export default function App() {
     setSavedStudentClass(activeStudentClass);
     setIsStudentSessionActive(true);
     setOpenGoogleAuthModal(false);
+
+    try {
+      localStorage.setItem("najot_saved_student_name", cleanName);
+      localStorage.setItem("najot_saved_student_class", activeStudentClass);
+      localStorage.setItem("najot_saved_student_active", "true");
+    } catch (e) {}
     
     // Clear inputs
     setGoogleEmailInput("");
@@ -316,6 +340,13 @@ export default function App() {
     setSavedStudentClass("9-A");
     setActiveStudentName("");
     setIsStudentSessionActive(false);
+
+    try {
+      localStorage.removeItem("najot_saved_student_name");
+      localStorage.removeItem("najot_saved_student_class");
+      localStorage.removeItem("najot_saved_student_active");
+    } catch (e) {}
+
     triggerDialog("info", "Sessiya Tugallandi", "O'quvchi Google hisobi kioskdan o'chirildi.");
   };
 
@@ -567,11 +598,16 @@ export default function App() {
         } catch (e) {}
 
         // Synchronize and auto-save state for fluid kiosk experience
-        if (!savedStudentName) {
-          setSavedStudentName(sName);
-          setSavedStudentClass(sClass);
-          setIsStudentSessionActive(true);
-        }
+         if (!savedStudentName) {
+           setSavedStudentName(sName);
+           setSavedStudentClass(sClass);
+           setIsStudentSessionActive(true);
+           try {
+             localStorage.setItem("najot_saved_student_name", sName);
+             localStorage.setItem("najot_saved_student_class", sClass);
+             localStorage.setItem("najot_saved_student_active", "true");
+           } catch (e) {}
+         }
 
         triggerDialog(
           "success",

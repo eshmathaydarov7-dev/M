@@ -25,12 +25,65 @@ import BookCatalog from "./components/BookCatalog";
 import RightSidebarLogs from "./components/RightSidebarLogs";
 import AdminPanel from "./components/AdminPanel";
 
+// Extremely robust, crash-proof fetch wrapper that handles non-JSON, empty, or error responses gracefully.
+async function safeFetchJson(url: string, options?: RequestInit) {
+  try {
+    const res = await fetch(url, options);
+    const contentType = res.headers.get("content-type");
+    
+    let resultData: any = null;
+    let text = "";
+    try {
+      text = await res.text();
+    } catch {
+      // ignore
+    }
+
+    if (contentType && contentType.includes("application/json") && text.trim() !== "") {
+      try {
+        resultData = JSON.parse(text);
+      } catch (jsonErr) {
+        console.error("JSON parsing error:", jsonErr);
+      }
+    }
+
+    if (!res.ok) {
+      const errorMessage = (resultData && resultData.error) || (resultData && resultData.message) || `Xatolik yuz berdi (Satus: ${res.status})`;
+      throw new Error(errorMessage);
+    }
+
+    if (resultData !== null) {
+      return resultData;
+    }
+
+    if (text.trim() === "") {
+      return { success: true };
+    }
+    
+    return { success: true, text };
+  } catch (err: any) {
+    console.error("Fetch request failed:", err);
+    throw new Error(err.message || "Tarmoq ulanishida kutilmagan xatolik yuz berdi.");
+  }
+}
+
 export default function App() {
   // Library States
   const [books, setBooks] = useState<Book[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Online Visitor & Multi-Computer Sync
+  const [onlineCount, setOnlineCount] = useState<number>(1);
+  const [clientId] = useState<string>(() => {
+    let id = localStorage.getItem("library_visitor_client_id");
+    if (!id || id.trim() === "") {
+      id = "cl_" + Math.random().toString(36).substring(2, 11);
+      localStorage.setItem("library_visitor_client_id", id);
+    }
+    return id;
+  });
 
   // Active Student State (Kiosk Session)
   const [activeStudentName, setActiveStudentName] = useState<string>("");
@@ -48,6 +101,11 @@ export default function App() {
   const [adminPasswordError, setAdminPasswordError] = useState<string | null>(null);
   const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(false);
 
+  // Teacher password lock for adding books
+  const [openTeacherModal, setOpenTeacherModal] = useState<boolean>(false);
+  const [teacherPasswordInput, setTeacherPasswordInput] = useState<string>("");
+  const [teacherPasswordError, setTeacherPasswordError] = useState<string | null>(null);
+
   // Scanner Modal Logic state
   const [openScanner, setOpenScanner] = useState<boolean>(false);
   const [scannerMode, setScannerMode] = useState<'borrow' | 'return' | 'add' | null>(null);
@@ -62,16 +120,95 @@ export default function App() {
     bookData?: any; // To store scanned book previews before adding
   } | null>(null);
 
+  // Local Custom Backup Registries to guarantee that user-added books/transactions are never lost on container resets
+  const registerCustomBook = (book: any) => {
+    try {
+      const stored = localStorage.getItem("najot_custom_books");
+      const currentList = stored ? JSON.parse(stored) : [];
+      if (!Array.isArray(currentList)) return;
+      
+      const exists = currentList.some((b: any) => String(b.barcode) === String(book.barcode));
+      if (!exists) {
+        currentList.push({
+          id: String(book.barcode),
+          title: book.title,
+          author: book.author || "Noma'lum muallif",
+          category: book.category || "new",
+          barcode: String(book.barcode),
+          publishedYear: book.publishedYear || new Date().getFullYear(),
+          description: book.description || "Tavsif berilmagan.",
+          available: book.available !== undefined ? book.available : true,
+          borrowCount: book.borrowCount || 0,
+          addedAt: book.addedAt || new Date().toISOString()
+        });
+        localStorage.setItem("najot_custom_books", JSON.stringify(currentList));
+      }
+    } catch (e) {
+      console.error("Local register error:", e);
+    }
+  };
+
+  const unregisterCustomBook = (id: string) => {
+    try {
+      const stored = localStorage.getItem("najot_custom_books");
+      if (!stored) return;
+      const currentList = JSON.parse(stored);
+      if (!Array.isArray(currentList)) return;
+      
+      const updatedList = currentList.filter((b: any) => String(b.id) !== String(id) && String(b.barcode) !== String(id));
+      localStorage.setItem("najot_custom_books", JSON.stringify(updatedList));
+    } catch (e) {
+      console.error("Local unregister error:", e);
+    }
+  };
+
+  const registerCustomTransaction = (tx: any) => {
+    try {
+      const stored = localStorage.getItem("najot_custom_transactions");
+      const currentList = stored ? JSON.parse(stored) : [];
+      if (!Array.isArray(currentList)) return;
+      
+      const idx = currentList.findIndex((t: any) => t.id === tx.id);
+      if (idx > -1) {
+        currentList[idx] = tx;
+      } else {
+        currentList.unshift(tx);
+      }
+      localStorage.setItem("najot_custom_transactions", JSON.stringify(currentList));
+    } catch (e) {
+      console.error("Local tx register error:", e);
+    }
+  };
+
   // Fetch full inventory & logs on load
   const loadLibraryData = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/library");
-      if (!res.ok) throw new Error("Kutubxona ma'lumotlarini yuklab bo'lmadi.");
-      const data = await res.json();
+      
+      // Load custom user added books & transactions from client's localStorage backup
+      let clientBooks: any[] = [];
+      let clientTransactions: any[] = [];
+      try {
+        const storedBooks = localStorage.getItem("najot_custom_books");
+        if (storedBooks) clientBooks = JSON.parse(storedBooks);
+        const storedTxs = localStorage.getItem("najot_custom_transactions");
+        if (storedTxs) clientTransactions = JSON.parse(storedTxs);
+      } catch (err) {
+        console.error("Local storage sync read error:", err);
+      }
+
+      // Automatically sync and recover data with the server database (POST sync payload)
+      const data = await safeFetchJson(`/api/library/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientBooks, clientTransactions })
+      });
       
       const serverBooks = data.books || [];
       const serverTransactions = data.transactions || [];
+      if (typeof data.onlineCount === "number") {
+        setOnlineCount(data.onlineCount);
+      }
       
       if (serverBooks.length > 0) {
         setBooks(serverBooks);
@@ -79,26 +216,21 @@ export default function App() {
         localStorage.setItem("najot_books_backup", JSON.stringify(serverBooks));
         localStorage.setItem("najot_transactions_backup", JSON.stringify(serverTransactions));
       } else {
-        // If server returns empty array (e.g., cleared/unseeded or dynamic reset in container deployment), check local storage
+        // Fallback
         const localBooksStr = localStorage.getItem("najot_books_backup");
         const localTxsStr = localStorage.getItem("najot_transactions_backup");
         if (localBooksStr) {
-          const localBooks = JSON.parse(localBooksStr);
-          const localTxs = localTxsStr ? JSON.parse(localTxsStr) : [];
-          setBooks(localBooks);
-          setTransactions(localTxs);
+          setBooks(JSON.parse(localBooksStr));
+          setTransactions(localTxsStr ? JSON.parse(localTxsStr) : []);
         } else {
-          // If both local storage and server books are completely empty, set high-fidelity defaultBooks dataset
           setBooks(defaultBooks);
           setTransactions([]);
-          localStorage.setItem("najot_books_backup", JSON.stringify(defaultBooks));
-          localStorage.setItem("najot_transactions_backup", JSON.stringify([]));
         }
       }
       setErrorMessage(null);
     } catch (err: any) {
       setErrorMessage(err.message || "Ulanishda xatolik yuz berdi.");
-      // On connection error, load fallback data from localStorage or defaultBooks so that the user keeps their screen active
+      // On connection error, load fallback data from localStorage
       const localBooksStr = localStorage.getItem("najot_books_backup");
       const localTxsStr = localStorage.getItem("najot_transactions_backup");
       if (localBooksStr) {
@@ -115,8 +247,8 @@ export default function App() {
 
   useEffect(() => {
     loadLibraryData();
-    // Auto sync occasionally
-    const interval = setInterval(loadLibraryData, 10000);
+    // Auto sync frequently to guarantee real-time multi-device collaboration
+    const interval = setInterval(loadLibraryData, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -158,14 +290,32 @@ export default function App() {
   // Handle admin password verification
   const handleVerifyAdminPassword = (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminPasswordInput === "najot123") {
+    const input = adminPasswordInput.trim();
+    if (input === "najot123" || input === "najot-ustozlar") {
       setIsAdminUnlocked(true);
       setViewMode('admin');
       setOpenLockModal(false);
       setAdminPasswordInput("");
       setAdminPasswordError(null);
     } else {
-      setAdminPasswordError("Parol noto'g'ri! Iltimos qaytadan urining (parol: najot123).");
+      setAdminPasswordError("Parol noto'g'ri! Iltimos qaytadan urining (parol: najot123 yoki najot-ustozlar).");
+    }
+  };
+
+  // Handle teacher password verification for adding books
+  const handleVerifyTeacherPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    const input = teacherPasswordInput.trim();
+    if (input === "najot-ustozlar" || input === "najot123") {
+      setOpenTeacherModal(false);
+      setTeacherPasswordInput("");
+      setTeacherPasswordError(null);
+      
+      // Let them add a book
+      setScannerMode("add");
+      setOpenScanner(true);
+    } else {
+      setTeacherPasswordError("Parol noto'g'ri! Kitob qo'shish faqat ustozlar uchun ruhsat etiladi.");
     }
   };
 
@@ -177,10 +327,6 @@ export default function App() {
 
   // Trigger Borrow Scan trigger
   const triggerBorrowScan = (book: Book) => {
-    if (!isStudentSessionActive) {
-      triggerDialog("error", "Ism-familiya kiritilmagan", "Iltimos, kitobni olishdan oldin ism-familiya va sinfingizni kiosk ekranida kiritib qo'ying!");
-      return;
-    }
     setSelectedBookForAction(book);
     setScannerMode("borrow");
     setOpenScanner(true);
@@ -238,14 +384,11 @@ export default function App() {
         let endpoint = scannedData.isImage ? "/api/library/scan-photo" : null;
         
         if (endpoint) {
-          const res = await fetch(endpoint, {
+          const result = await safeFetchJson(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
           });
-          
-          if (!res.ok) throw new Error("Skan tasvirini tahlil qilishda xatolik.");
-          const result = await res.json();
           
           if (result.success && result.book) {
             // Display preview so visual verification is supported
@@ -286,7 +429,7 @@ export default function App() {
         const { barcode: qBarcode, title: qTitle, studentName: qStudent, studentClass: qClass } = scannedData.quickBorrowData;
         
         // 1. Add/register the book (or update if already exists)
-        const addRes = await fetch("/api/library/add-book", {
+        const addResult = await safeFetchJson("/api/library/add-book", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -297,12 +440,18 @@ export default function App() {
             description: "Tezkor kitob olish tizimi orqali qoldirilgan qayd."
           })
         });
-        
-        const addResult = await addRes.json();
-        if (!addRes.ok) throw new Error(addResult.error || "Kitobni dasturga qo'shishda xatolik.");
+
+        // Register custom-added book locally so it is permanently cached across container sessions
+        registerCustomBook({
+          title: qTitle,
+          author: "Noma'lum muallif",
+          category: "new",
+          barcode: qBarcode,
+          description: "Tezkor kitob olish tizimi orqali qoldirilgan qayd."
+        });
 
         // 2. Immediately borrow it to this student
-        const borrowRes = await fetch("/api/library/borrow", {
+        const borrowResult = await safeFetchJson("/api/library/borrow", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -311,9 +460,10 @@ export default function App() {
             studentClass: qClass
           })
         });
-        
-        const borrowResult = await borrowRes.json();
-        if (!borrowRes.ok) throw new Error(borrowResult.error || "Kitobni qaydnomaga yozishda xatolik.");
+
+        if (borrowResult && borrowResult.transaction) {
+          registerCustomTransaction(borrowResult.transaction);
+        }
 
         triggerDialog(
           "success",
@@ -336,37 +486,52 @@ export default function App() {
     if (scannerMode === "borrow" && selectedBookForAction) {
       setLoading(true);
       try {
-        const barcodeToCheck = scannedData.isImage 
-          ? selectedBookForAction.barcode // webcam capture confirms target book selection
-          : scannedData.barcode; 
+        // Retrieve student name and class either from wizard form submission or fallback to active pre-saved session
+        const sName = scannedData.quickBorrowData?.studentName || savedStudentName;
+        const sClass = scannedData.quickBorrowData?.studentClass || savedStudentClass;
 
-        if (barcodeToCheck !== selectedBookForAction.barcode) {
-          triggerDialog(
-            "error", 
-            "Shtrix-kod mos kelmadi", 
-            `Kechirasiz! Siz "${selectedBookForAction.title}" kitobini tanladingiz, ammo skanerda boshqa kitob shtrix-kodi (${barcodeToCheck}) aniqlandi. Iltimos to'g'ri kitobni ko'rsatib qaytadan skanerlang.`
-          );
-          setLoading(false);
-          return;
+        if (!sName || !sName.trim()) {
+          throw new Error("Iltimos, o'quvchi ism-familiyasini kiriting.");
         }
 
-        const res = await fetch("/api/library/borrow", {
+        const result = await safeFetchJson("/api/library/borrow", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             bookId: selectedBookForAction.id,
-            studentName: savedStudentName,
-            studentClass: savedStudentClass
+            studentName: sName,
+            studentClass: sClass
           })
         });
 
-        const result = await res.json();
-        if (!res.ok) throw new Error(result.error || "Kitobni olishda muammo yuz berdi.");
+        if (result && result.transaction) {
+          registerCustomTransaction(result.transaction);
+        }
+
+        // Keep availability sync in custom storage
+        try {
+          const stored = localStorage.getItem("najot_custom_books");
+          if (stored) {
+            const list = JSON.parse(stored);
+            const idx = list.findIndex((b: any) => String(b.id) === String(selectedBookForAction.id) || String(b.barcode) === String(selectedBookForAction.id));
+            if (idx > -1) {
+              list[idx].available = false;
+              localStorage.setItem("najot_custom_books", JSON.stringify(list));
+            }
+          }
+        } catch (e) {}
+
+        // Synchronize and auto-save state for fluid kiosk experience
+        if (!savedStudentName) {
+          setSavedStudentName(sName);
+          setSavedStudentClass(sClass);
+          setIsStudentSessionActive(true);
+        }
 
         triggerDialog(
           "success",
           "Kitob Ro'yxatdan O'tkazildi!",
-          `"${selectedBookForAction.title}" kitobi muvaffaqiyatli ${savedStudentName} (${savedStudentClass}) nomiga rasmiylashtirildi. Kitobni qaytarish muddati - 15 kun.`
+          `"${selectedBookForAction.title}" kitobi muvaffaqiyatli ${sName} (${sClass}) nomiga rasmiylashtirildi. Kitobni qaytarish muddati - 15 kun.`
         );
         loadLibraryData();
 
@@ -380,47 +545,81 @@ export default function App() {
       return;
     }
 
-    // 3. RETURN BOOK MODE FLOW
-    if (scannerMode === "return" && selectedBookForAction) {
+    // 3. RETURN BOOK MODE FLOW (Handles both selected book return and general scanner/simulated returns)
+    if (scannerMode === "return") {
       setLoading(true);
       try {
-        const barcodeToCheck = scannedData.isImage 
-          ? selectedBookForAction.barcode 
-          : scannedData.barcode;
-
-        if (barcodeToCheck !== selectedBookForAction.barcode) {
-          triggerDialog(
-            "error", 
-            "Shtrix-kod mos kelmadi", 
-            `Kechirasiz! Topsirilayotgan kitob "${selectedBookForAction.title}" bo'lishi kerak, ammo skanerda boshqa shtrix-kod aniqlandi.`
-          );
-          setLoading(false);
-          return;
+        const inputBarcode = scannedData.barcode?.trim();
+        if (!inputBarcode) {
+          throw new Error("Shtrix-kod aniqlanmadi.");
         }
 
-        const res = await fetch("/api/library/return", {
+        // 1. Identify which book is being returned
+        let targetBook = selectedBookForAction;
+        
+        if (!targetBook) {
+          // If no pre-selected book, find the book in catalog using barcode
+          const found = books.find(b => String(b.barcode) === String(inputBarcode) || String(b.id) === String(inputBarcode));
+          if (!found) {
+            throw new Error(`Shtrix-kodi "${inputBarcode}" bo'lgan kitob kutubxona bazasida topilmadi. Iltimos, shtrix-kodni tekshiring yoki kitobni avval bazaga qo'shing.`);
+          }
+          targetBook = found;
+        } else {
+          // If a specific book was chosen for action, we enforce barcode matching
+          const barcodeToCheck = scannedData.isImage 
+            ? targetBook.barcode 
+            : scannedData.barcode;
+
+          if (barcodeToCheck !== targetBook.barcode) {
+            triggerDialog(
+              "error", 
+              "Shtrix-kod mos kelmadi", 
+              `Kechirasiz! Topshirilayotgan kitob "${targetBook.title}" bo'lishi kerak, ammo skanerda boshqa shtrix-kod aniqlandi.`
+            );
+            setLoading(false);
+            return;
+          }
+        }
+
+        // 2. Perform the server return API call
+        const result = await safeFetchJson("/api/library/return", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bookId: selectedBookForAction.id })
+          body: JSON.stringify({ bookId: targetBook.id })
         });
 
-        const result = await res.json();
-        if (!res.ok) throw new Error(result.error || "Qaytarishda muammo yuz berdi.");
+        if (result && result.transaction) {
+          registerCustomTransaction(result.transaction);
+        }
+
+        // Keep availability sync in custom storage
+        try {
+          const stored = localStorage.getItem("najot_custom_books");
+          if (stored) {
+            const list = JSON.parse(stored);
+            const idx = list.findIndex((b: any) => String(b.id) === String(targetBook.id) || String(b.barcode) === String(targetBook.id));
+            if (idx > -1) {
+              list[idx].available = true;
+              localStorage.setItem("najot_custom_books", JSON.stringify(list));
+            }
+          }
+        } catch (e) {}
 
         triggerDialog(
           "success",
           "Kitob Kutubxonaga Qabul Qilindi!",
-          `Rahmat! "${selectedBookForAction.title}" mukammal tarzda elektron qaydnomadan qaytarildi va kutubxona javoniga qayta joylashtirildi.`
+          `Rahmat! "${targetBook.title}" kitobi muvaffaqiyatli elektron qaydnomadan qaytarildi va kutubxona javoniga joylandi.`
         );
         loadLibraryData();
 
       } catch (err: any) {
         triggerDialog("error", "Qaytarishda xatolik", err.message);
-      } {
+      } finally {
         setLoading(false);
         setSelectedBookForAction(null);
         setScannerMode(null);
       }
+      return;
     }
   };
 
@@ -428,13 +627,14 @@ export default function App() {
   const saveNewBookToDatabase = async (finalBook: any) => {
     setLoading(true);
     try {
-      const res = await fetch("/api/library/add-book", {
+      const result = await safeFetchJson("/api/library/add-book", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(finalBook)
       });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Kitob saqlashda xatolik.");
+
+      // Register custom-added book locally so it is permanently cached across container sessions
+      registerCustomBook(finalBook);
 
       triggerDialog(
         "success",
@@ -453,13 +653,18 @@ export default function App() {
   // Administration backend reset
   const handleResetEntireDatabase = async () => {
     try {
-      const res = await fetch("/api/library/reset", {
+      const result = await safeFetchJson("/api/library/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: "najot123" })
       });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error);
+      
+      // Reset local registries on global reset
+      localStorage.removeItem("najot_custom_books");
+      localStorage.removeItem("najot_custom_transactions");
+      localStorage.removeItem("najot_books_backup");
+      localStorage.removeItem("najot_transactions_backup");
+
       triggerDialog("success", "Ma'lumotlar Tozalandi", "Butun tizim dastlabki zavod kitoblari holatiga tozalandi!");
       loadLibraryData();
     } catch (err: any) {
@@ -470,9 +675,11 @@ export default function App() {
   // Administration individual book deletion
   const handleDeleteBook = async (id: string) => {
     try {
-      const res = await fetch(`/api/library/book/${id}`, { method: "DELETE" });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error);
+      const result = await safeFetchJson(`/api/library/book/${id}`, { method: "DELETE" });
+      
+      // Unregister custom book locally to avoid re-syncing deleted entries
+      unregisterCustomBook(id);
+
       triggerDialog("success", "Kitob O'chirildi", "Siz tanlagan kitob kutubxona arxividan butunlay o'chirib tashlandi.");
       loadLibraryData();
     } catch (err: any) {
@@ -490,10 +697,17 @@ export default function App() {
               NL
             </div>
             <div>
-              <h1 className="font-display font-black text-2xl tracking-tight text-indigo-950 uppercase flex items-center gap-2">
+              <h1 className="font-display font-black text-2xl tracking-tight text-indigo-950 uppercase flex items-center sm:flex-row flex-wrap gap-2">
                 najot-liblarion
-                <span className="text-[10px] uppercase font-mono bg-indigo-50 text-indigo-700 font-bold tracking-wider px-2.5 py-0.5 rounded-full border border-indigo-200">
+                <span className="text-[10px] uppercase font-mono bg-indigo-50 text-indigo-700 font-bold tracking-wider px-2.5 py-0.5 rounded-full border border-indigo-200 select-none">
                   Toliq Qulflangan Kiosk
+                </span>
+                <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 font-bold font-mono text-[10px] tracking-wider px-2.5 py-0.5 rounded-full border border-emerald-250 shadow-sm shrink-0 select-none">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  {onlineCount} Kishim Onlayn
                 </span>
               </h1>
               <p className="text-[11px] text-slate-500 font-medium">Elektron o'quvchi & smart kitob band qilish terminali</p>
@@ -679,14 +893,18 @@ export default function App() {
                 onBorrowBook={triggerBorrowScan}
                 onReturnBook={triggerReturnScan}
                 onAddBookClick={() => {
-                  setScannerMode("add");
-                  setOpenScanner(true);
+                  setOpenTeacherModal(true);
                 }}
                 onQuickBorrowClick={() => {
                   setScannerMode("quick_borrow");
                   setOpenScanner(true);
                 }}
-                activeStudent={isStudentSessionActive ? { name: savedStudentName, class: savedStudentClass } : null}
+                onQuickReturnClick={() => {
+                  setScannerMode("return");
+                  setSelectedBookForAction(null);
+                  setOpenScanner(true);
+                }}
+                activeStudent={{ name: savedStudentName || "", class: savedStudentClass || "9-A" }}
                 onDeleteBook={handleDeleteBook}
               />
             </div>
@@ -781,6 +999,59 @@ export default function App() {
         </div>
       )}
 
+      {/* (A2) TEACHER AUTHENTICATION MODAL */}
+      {openTeacherModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative animate-fadeIn" id="teacher-auth-modal">
+            <h3 className="font-display font-black text-lg text-slate-900 mb-2 flex items-center gap-2">
+              <Lock className="w-5 h-5 text-indigo-600 animate-pulse" />
+              Ustoz paroli
+            </h3>
+            <p className="text-xs text-slate-500 mb-5 leading-relaxed font-semibold">
+              Yangi kitoblar qo'shish huquqi faqat ustozlarga berilgan. Iltimos ustozlik maxsus parolini kiriting: (Parol: <b className="font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200/50">najot-ustozlar</b>)
+            </p>
+
+            <form onSubmit={handleVerifyTeacherPassword} className="space-y-4">
+              <input
+                type="password"
+                required
+                placeholder="Parolni yozing..."
+                value={teacherPasswordInput}
+                onChange={(e) => setTeacherPasswordInput(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-250 rounded-xl text-sm text-center text-slate-800 font-semibold focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                autoFocus
+              />
+
+              {teacherPasswordError && (
+                <p className="text-xs text-red-700 bg-red-50 border border-red-200 p-2.5 rounded-lg text-center font-medium">
+                  {teacherPasswordError}
+                </p>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenTeacherModal(false);
+                    setTeacherPasswordInput("");
+                    setTeacherPasswordError(null);
+                  }}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold py-2.5 transition-colors border border-slate-200"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold py-2.5 transition-colors cursor-pointer shadow-md shadow-indigo-100"
+                >
+                  Tasdiqlash
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* (B) WEBCAM / SIMULATOR SCANNER DIALOG */}
       {openScanner && scannerMode && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -789,7 +1060,7 @@ export default function App() {
               mode={scannerMode}
               catalogBooks={books}
               selectedBook={selectedBookForAction}
-              activeStudent={isStudentSessionActive ? { name: savedStudentName, class: savedStudentClass } : null}
+              activeStudent={isStudentSessionActive ? { name: savedStudentName, class: savedStudentClass } : { name: savedStudentName || "", class: savedStudentClass || "9-A" }}
               onCancel={() => {
                 setOpenScanner(false);
                 setSelectedBookForAction(null);

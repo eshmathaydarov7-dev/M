@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Search, BookOpen, Clock, CheckCircle, AlertTriangle, BookMarked, Layers, Sparkles, Trash } from "lucide-react";
+import { Search, BookOpen, Clock, CheckCircle, AlertTriangle, BookMarked, Layers, Sparkles, Trash, Mic, MicOff, Loader2, RotateCcw } from "lucide-react";
 import { Book } from "../types";
 
 interface BookCatalogProps {
@@ -10,11 +10,83 @@ interface BookCatalogProps {
   activeStudent?: { name: string; class: string } | null;
   onDeleteBook?: (bookId: string) => void;
   onQuickBorrowClick?: () => void;
+  onQuickReturnClick?: () => void;
 }
 
-export default function BookCatalog({ books, onBorrowBook, onReturnBook, onAddBookClick, activeStudent, onDeleteBook, onQuickBorrowClick }: BookCatalogProps) {
+export default function BookCatalog({ books, onBorrowBook, onReturnBook, onAddBookClick, activeStudent, onDeleteBook, onQuickBorrowClick, onQuickReturnClick }: BookCatalogProps) {
   const [activeTab, setActiveTab] = useState<'all' | 'world' | 'uzbek' | 'new'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const [recognitionInstance, setRecognitionInstance] = useState<any>(null);
+  const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
+
+  const toggleListening = () => {
+    if (isListening) {
+      if (recognitionInstance) {
+        try {
+          recognitionInstance.stop();
+        } catch (e) {
+          console.error("Stop error:", e);
+        }
+      }
+      setIsListening(false);
+      setVoiceStatus(null);
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Kechirasiz! Sizning brauzeringizda ovozli qidiruv (Web Speech API) qo'llab-quvvatlanmaydi. Iltimos Google Chrome yoki Microsoft Edge brauzeridan foydalaning.");
+      return;
+    }
+
+    try {
+      const rec = new SpeechRecognition();
+      rec.continuous = false;
+      rec.interimResults = false;
+      rec.lang = "uz-UZ";
+
+      rec.onstart = () => {
+        setIsListening(true);
+        setVoiceStatus("Gapiring... (Kitob nomini ayting)");
+      };
+
+      rec.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          const cleanText = transcript.trim().replace(/\.$/, "");
+          setSearchQuery(cleanText);
+          setVoiceStatus(`Tushundim: "${cleanText}"`);
+          setTimeout(() => setVoiceStatus(null), 3000);
+        }
+      };
+
+      rec.onerror = (event: any) => {
+        console.error("Nutqni aniqlash xatosi:", event.error);
+        if (event.error === "not-allowed") {
+          setVoiceStatus("Mikrofonga ruxsat berilmadi!");
+        } else if (event.error === "no-speech") {
+          setVoiceStatus("Ovoz eshitilmadi.");
+        } else {
+          setVoiceStatus(`Xatolik: ${event.error}`);
+        }
+        setIsListening(false);
+        setTimeout(() => setVoiceStatus(null), 3000);
+      };
+
+      rec.onend = () => {
+        setIsListening(false);
+      };
+
+      rec.start();
+      setRecognitionInstance(rec);
+    } catch (err: any) {
+      console.error(err);
+      setVoiceStatus("Ovozli tizimni ishga tushirib bo'lmadi.");
+      setIsListening(false);
+      setTimeout(() => setVoiceStatus(null), 3000);
+    }
+  };
 
   // Filtering books selection
   const filteredBooks = books.filter(book => {
@@ -63,6 +135,15 @@ export default function BookCatalog({ books, onBorrowBook, onReturnBook, onAddBo
               Tezkor Kitob Olish
             </button>
           )}
+          {onQuickReturnClick && (
+            <button
+              onClick={onQuickReturnClick}
+              className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition-transform active:scale-95 cursor-pointer shadow-md shadow-amber-105 w-full md:w-auto justify-center"
+            >
+              <RotateCcw className="w-4 h-4 text-white" />
+              Tezkor Kitob Qaytarish
+            </button>
+          )}
           <button
             onClick={onAddBookClick}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition-transform active:scale-95 cursor-pointer shadow-md shadow-indigo-100 w-full md:w-auto justify-center animate-pulse"
@@ -80,11 +161,46 @@ export default function BookCatalog({ books, onBorrowBook, onReturnBook, onAddBo
           <Search className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
           <input
             type="text"
-            placeholder="Kitob nomi, muallifi yoki shtrix-kodi bo'yicha qidiring (shtrix-kod yozish ixtiyoriy)..."
+            placeholder={isListening ? "Ovozli qidiruv eshitilmoqda: kutilyapti..." : "Kitob nomi yoki muallifi bo'yicha qidiring..."}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 placeholder-slate-400 transition-colors shadow-inner font-medium"
+            className={`w-full pl-11 pr-24 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 placeholder-slate-400 transition-colors shadow-inner font-medium ${
+              isListening ? "border-red-300 ring-2 ring-red-100" : ""
+            }`}
           />
+          
+          <div className="absolute right-3 top-2 flex items-center gap-1.5">
+            {voiceStatus && (
+              <span className={`text-[10px] font-bold px-2 py-1 rounded bg-slate-150 border font-sans mr-1 max-w-[130px] truncate ${
+                isListening ? "text-red-650 bg-red-50 border-red-150 animate-pulse" : "text-indigo-650 bg-indigo-50 border-indigo-150"
+              }`}>
+                {voiceStatus}
+              </span>
+            )}
+            
+            <button
+              onClick={toggleListening}
+              type="button"
+              className={`p-1.5 rounded-lg transition-all focus:outline-none cursor-pointer ${
+                isListening
+                  ? "bg-red-500 hover:bg-red-600 text-white shadow-md shadow-red-200 scale-105"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-205 hover:text-slate-800"
+              }`}
+              title={isListening ? "To'xtatish" : "Ovoqli qidiruv (uz-UZ)"}
+            >
+              {isListening ? (
+                <span className="flex items-center gap-1">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-100 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+                  </span>
+                  <MicOff className="w-4 h-4" />
+                </span>
+              ) : (
+                <Mic className="w-4 h-4" />
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Category Pill Buttons */}

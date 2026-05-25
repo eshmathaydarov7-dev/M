@@ -1,6 +1,6 @@
 {
   "name": "Najot-Liblarion",
   "description": "Kutubxonadagi noutbuklar uchun mo'ljallangan onlayn kitob skanerlash va band qilish doimiy kioski.",
-  "requestFramePermissions": ["camera"],
+  "requestFramePermissions": ["camera", "microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

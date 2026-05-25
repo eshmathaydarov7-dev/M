@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "book": {
+      "title": "Book",
+      "description": "Library book specification",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "barcode": {
+          "type": "string"
+        },
+        "publishedYear": {
+          "type": "integer"
+        },
+        "description": {
+          "type": "string"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "borrowCount": {
+          "type": "integer"
+        },
+        "addedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "author",
+        "barcode"
+      ]
+    },
+    "transaction": {
+      "title": "Transaction",
+      "description": "Book borrowing transaction log",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "bookId": {
+          "type": "string"
+        },
+        "bookTitle": {
+          "type": "string"
+        },
+        "studentName": {
+          "type": "string"
+        },
+        "studentClass": {
+          "type": "string"
+        },
+        "borrowedAt": {
+          "type": "string"
+        },
+        "returnedAt": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "bookId",
+        "bookTitle",
+        "studentName",
+        "studentClass",
+        "status"
+      ]
+    }
+  },
+  "firestore": {
+    "books": {
+      "schema": "book",
+      "description": "List of books in the library catalog"
+    },
+    "transactions": {
+      "schema": "transaction",
+      "description": "History of borrow and return transactions"
+    }
+  }
+}
